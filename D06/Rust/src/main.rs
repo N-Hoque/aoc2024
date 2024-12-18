@@ -1,143 +1,157 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Cell {
-    position: (usize, usize),
-    r#type: CellType,
+use std::collections::HashSet;
+
+pub struct Grid {
+    tiles: Vec<Vec<char>>,
+    width: usize,
+    height: usize,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum CellType {
-    Empty,
-    Obstacle,
-    Start,
-}
+impl Grid {
+    fn new(input: &str) -> Self {
+        let tiles: Vec<Vec<char>> = input.lines().map(|line| line.chars().collect()).collect();
+        let height = tiles.len();
+        let width = tiles[0].len();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum Orientation {
-    Left,
-    Right,
-    Up,
-    Down,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Rotation {
-    Clockwise,
-    CounterClockwise,
-}
-
-impl Orientation {
-    pub fn offset(self) -> (isize, isize) {
-        match self {
-            Orientation::Left => (0, -1),
-            Orientation::Right => (0, 1),
-            Orientation::Up => (-1, 0),
-            Orientation::Down => (1, 0),
+        Self {
+            tiles,
+            width,
+            height,
         }
     }
 
-    pub fn rotate(self, direction: Rotation) -> Self {
-        match (self, direction) {
-            (Self::Left, Rotation::Clockwise) => Self::Up,
-            (Self::Left, Rotation::CounterClockwise) => Self::Down,
-            (Self::Up, Rotation::Clockwise) => Self::Right,
-            (Self::Up, Rotation::CounterClockwise) => Self::Left,
-            (Self::Right, Rotation::Clockwise) => Self::Down,
-            (Self::Right, Rotation::CounterClockwise) => Self::Up,
-            (Self::Down, Rotation::Clockwise) => Self::Left,
-            (Self::Down, Rotation::CounterClockwise) => Self::Right,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Guard {
-    position: (usize, usize),
-    orientation: Orientation,
-}
-
-fn parse_grid(input: &str) -> Vec<Vec<Cell>> {
-    let mut grid = Vec::new();
-
-    for (idx, line) in input.lines().enumerate() {
-        let cells = line
-            .chars()
-            .enumerate()
-            .map(|(jdx, c)| Cell {
-                position: (idx, jdx),
-                r#type: match c {
-                    '^' => CellType::Start,
-                    '#' => CellType::Obstacle,
-                    _ => CellType::Empty,
-                },
-            })
-            .collect();
-        grid.push(cells);
-    }
-
-    grid
-}
-
-fn solve_part_one(grid: &[Vec<Cell>]) -> usize {
-    let mut start_position = (0, 0);
-    for idx in 0..grid.len() {
-        for jdx in 0..grid[0].len() {
-            let cur_cell = grid[idx][jdx];
-            if let CellType::Start = cur_cell.r#type {
-                start_position = cur_cell.position;
+    fn get_guard_position(&self) -> (usize, usize) {
+        for row in 0..self.width {
+            for col in 0..self.height {
+                if self.tiles[row][col] == '^' {
+                    return (row, col);
+                }
             }
         }
+        panic!("guard no found in grid")
     }
 
-    let mut guard = Guard {
-        position: start_position,
-        orientation: Orientation::Up,
-    };
+    fn get_next_pos(
+        &self,
+        (guard_row, guard_col): (usize, usize),
+        direction: &mut Direction,
+    ) -> Option<(usize, usize)> {
+        let (next_row, next_col) = match direction {
+            Direction::Up => (guard_row.checked_sub(1)?, guard_col),
+            Direction::Right => (guard_row, guard_col + 1),
+            Direction::Down => (guard_row + 1, guard_col),
+            Direction::Left => (guard_row, guard_col.checked_sub(1)?),
+        };
 
-    let mut visited_cells = Vec::new();
+        let char = self.tiles.get(next_row).and_then(|row| row.get(next_col))?;
 
-    loop {
-        let position = guard.position;
-        if !visited_cells.contains(&position) {
-            visited_cells.push(position);
+        if char == &'#' {
+            direction.turn_right();
+            return Some((guard_row, guard_col));
         }
-        let offset = guard.orientation.offset();
-        let mut new_x = ((guard.position.0 as isize) + offset.0) as usize;
-        let mut new_y = ((guard.position.1 as isize) + offset.1) as usize;
 
-        match grid.get(new_x) {
-            None => break,
-            Some(row) => match row.get(new_y) {
-                None => break,
-                Some(cell) => {
-                    if cell.r#type == CellType::Obstacle {
-                        guard.orientation = guard.orientation.rotate(Rotation::Clockwise);
-                        let offset = guard.orientation.offset();
-                        new_x = ((guard.position.0 as isize) + offset.0) as usize;
-                        new_y = ((guard.position.1 as isize) + offset.1) as usize;
-                    }
-                    guard.position = (new_x, new_y);
-                }
-            },
-        }
+        Some((next_row, next_col))
+    }
+}
+
+#[derive(Clone, PartialEq, Hash, Eq, Copy)]
+enum Direction {
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+impl Direction {
+    fn turn_right(&mut self) {
+        *self = match self {
+            Direction::Up => Direction::Right,
+            Direction::Right => Direction::Down,
+            Direction::Down => Direction::Left,
+            Direction::Left => Direction::Up,
+        };
+    }
+}
+
+pub fn solve_part_one(grid: &Grid) -> usize {
+    let (mut guard_row, mut guard_col) = grid.get_guard_position();
+    let mut direction = Direction::Up; // UP
+
+    let mut visited = HashSet::new();
+    visited.insert((guard_row, guard_col));
+
+    while let Some((next_row, next_col)) = grid.get_next_pos((guard_row, guard_col), &mut direction)
+    {
+        guard_row = next_row;
+        guard_col = next_col;
+
+        visited.insert((guard_row, guard_col));
     }
 
-    visited_cells.len()
+    visited.len()
 }
 
-fn solve_part_two(grid: &[Vec<Cell>]) -> i32 {
-    0
+pub fn solve_part_two(grid: &mut Grid) -> usize {
+    let (mut guard_row, mut guard_col) = grid.get_guard_position();
+    let mut direction = Direction::Up;
+
+    let mut visited = HashSet::new();
+    let mut count = 0;
+
+    while let Some((next_row, next_col)) = grid.get_next_pos((guard_row, guard_col), &mut direction)
+    {
+        visited.insert((guard_row, guard_col));
+
+        if !visited.contains(&(next_row, next_col)) {
+            grid.tiles[next_row][next_col] = '#';
+            if gets_in_loop(&grid, (guard_row, guard_col), direction) {
+                count += 1;
+            }
+            grid.tiles[next_row][next_col] = '.';
+        }
+
+        (guard_row, guard_col) = (next_row, next_col);
+    }
+
+    count
 }
 
+fn gets_in_loop(
+    grid: &Grid,
+    (start_row, start_col): (usize, usize),
+    start_direction: Direction,
+) -> bool {
+    // only need to keep track of the times the guard turned
+    // if the guard made the same turn at the same obstacle twice then we have a cycle
+    let mut visited_obstacles: Vec<(usize, usize, Direction)> = Vec::new();
+
+    let mut direction = start_direction;
+    let (mut guard_row, mut guard_col) = (start_row, start_col);
+
+    while let Some((next_row, next_col)) = grid.get_next_pos((guard_row, guard_col), &mut direction)
+    {
+        if (guard_row, guard_col) == (next_row, next_col) {
+            if visited_obstacles.contains(&(guard_row, guard_col, direction)) {
+                return true;
+            }
+
+            visited_obstacles.push((guard_row, guard_col, direction));
+        }
+
+        (guard_row, guard_col) = (next_row, next_col);
+    }
+
+    false
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = std::fs::read_to_string("../input.txt")?;
 
-    let grid = parse_grid(&data);
+    let mut grid = Grid::new(&data);
 
     let p1 = solve_part_one(&grid);
 
     println!("{p1}");
 
-    let p2 = solve_part_two(&grid);
+    let p2 = solve_part_two(&mut grid);
 
     println!("{p2}");
 
@@ -161,7 +175,7 @@ mod tests {
     fn test_solve_one() {
         let expected = 41;
 
-        let grid = super::parse_grid(SAMPLE);
+        let grid = super::Grid::new(SAMPLE);
 
         let actual = super::solve_part_one(&grid);
 
@@ -170,12 +184,13 @@ mod tests {
 
     #[test]
     fn test_solve_two() {
-        let expected = 123;
+        let expected = 6;
 
-        let grid = super::parse_grid(SAMPLE);
+        let mut grid = super::Grid::new(SAMPLE);
 
-        let actual = super::solve_part_two(&grid);
+        let actual = super::solve_part_two(&mut grid);
 
         assert_eq!(expected, actual);
     }
 }
+
