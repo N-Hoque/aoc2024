@@ -1,17 +1,15 @@
-const XMAS_SPAN: isize = 3;
+static XMAS: &str = "XMAS";
 
-static XMAS_EXTENTS: &[Point] = &[
-    Point(0, XMAS_SPAN),
-    Point(0, -XMAS_SPAN),
-    Point(-XMAS_SPAN, 0),
-    Point(XMAS_SPAN, 0),
-    Point(XMAS_SPAN, XMAS_SPAN),
-    Point(XMAS_SPAN, -XMAS_SPAN),
-    Point(-XMAS_SPAN, -XMAS_SPAN),
-    Point(-XMAS_SPAN, XMAS_SPAN),
+const DIRECTIONS: [(isize, isize); 8] = [
+    (0, 1),
+    (0, -1),
+    (-1, 0),
+    (1, 0),
+    (1, 1),
+    (1, -1),
+    (-1, -1),
+    (-1, 1),
 ];
-
-static XMAS_CROSS_EXTENTS: &[Point] = &[Point(1, 1), Point(1, -1), Point(-1, -1), Point(-1, 1)];
 
 #[derive(Default)]
 struct Table {
@@ -20,172 +18,82 @@ struct Table {
     col_count: usize,
 }
 
-impl std::fmt::Display for Table {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut table = String::new();
-        for row in &self.cells {
-            let mut row_str = String::new();
-            for cell in row {
-                row_str.push(*cell);
-            }
-            table += &(row_str + "\n");
+impl Table {
+    pub fn new(input: &str) -> Self {
+        let cells: Vec<Vec<char>> = input.lines().map(|line| line.chars().collect()).collect();
+
+        Table {
+            row_count: cells.len(),
+            col_count: cells.first().map_or(0, |row| row.len()),
+            cells,
         }
-        write!(f, "{table}")
+    }
+
+    fn coordinate_map(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        (0..self.row_count).flat_map(|x| (0..self.col_count).map(move |y| (x, y)))
     }
 }
 
-#[derive(Debug)]
-struct Point(isize, isize);
-
-struct Bound {
-    start_x: usize,
-    end_x: usize,
-    start_y: usize,
-    end_y: usize,
-}
-
-impl std::fmt::Display for Bound {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "({}, {}) -> ({}, {})",
-            self.start_x, self.start_y, self.end_x, self.end_y
-        )
-    }
-}
-
-fn process_table(input: &str) -> Table {
-    let mut table = Table::default();
-
-    let mut rows = Vec::new();
-    for line in input.lines() {
-        let mut row = Vec::new();
-        for ch in line.chars() {
-            row.push(ch);
-        }
-        table.col_count = row.len();
-        rows.push(row);
-    }
-    table.row_count = rows.len();
-    table.cells = rows;
-    table
-}
-
-fn scan_table(table: &Table, x: usize, y: usize) -> Vec<Bound> {
-    let mut xmas_points = Vec::new();
-
+fn scan_table(table: &Table, x: usize, y: usize) -> usize {
     if table.cells[x][y] != 'X' {
-        return Vec::new();
+        0
+    } else {
+        DIRECTIONS
+            .iter()
+            .filter(|(dx, dy)| {
+                XMAS.chars().enumerate().all(|(step, ch)| {
+                    let nx = x as isize + dx * step as isize;
+                    let ny = y as isize + dy * step as isize;
+
+                    nx >= 0
+                        && nx < table.row_count as isize
+                        && ny >= 0
+                        && ny < table.col_count as isize
+                        && table.cells[nx as usize][ny as usize] == ch
+                })
+            })
+            .count()
     }
-
-    for extent in XMAS_EXTENTS {
-        let max_x = (x as isize) + extent.0;
-        let max_y = (y as isize) + extent.1;
-        if !(max_x >= 0
-            && max_x < (table.row_count as isize)
-            && max_y >= 0
-            && max_y < (table.col_count as isize))
-        {
-            continue;
-        }
-
-        let mut xmas_check = String::new();
-        for step in 0..4 {
-            let mut cur_x = x as isize;
-            if max_x - (x as isize) == XMAS_SPAN {
-                cur_x += step;
-            } else if max_x - (x as isize) == -XMAS_SPAN {
-                cur_x -= step;
-            }
-
-            let mut cur_y = y as isize;
-            if max_y - (y as isize) == XMAS_SPAN {
-                cur_y += step;
-            } else if max_y - (y as isize) == -XMAS_SPAN {
-                cur_y -= step;
-            }
-            xmas_check.push(table.cells[cur_x as usize][cur_y as usize]);
-        }
-        if xmas_check == "XMAS" {
-            xmas_points.push(Bound {
-                start_x: x,
-                start_y: y,
-                end_x: max_x as usize,
-                end_y: max_y as usize,
-            });
-        }
-    }
-
-    xmas_points
 }
 
-fn scan_table_cross(table: &Table, x: usize, y: usize) -> Option<Point> {
-    if table.cells[x][y] != 'A' {
-        return None;
+fn scan_table_cross(table: &Table, x: usize, y: usize) -> bool {
+    if table.cells[x][y] != 'A'
+        || x == 0
+        || y == 0
+        || x >= table.row_count - 1
+        || y >= table.col_count - 1
+    {
+        return false;
     }
 
-    for extent in XMAS_CROSS_EXTENTS {
-        let max_x = (x as isize) + extent.0;
-        let max_y = (y as isize) + extent.1;
-        if !(max_x >= 0
-            && max_x < (table.row_count as isize)
-            && max_y >= 0
-            && max_y < (table.col_count as isize))
-        {
-            return None;
-        }
-    }
+    let corners = [
+        table.cells[x - 1][y - 1], // tl
+        table.cells[x - 1][y + 1], // tr
+        table.cells[x + 1][y - 1], // bl
+        table.cells[x + 1][y + 1], // br
+    ];
 
-    let tl = table.cells[x - 1][y - 1];
-    let tr = table.cells[x - 1][y + 1];
-    let bl = table.cells[x + 1][y - 1];
-    let br = table.cells[x + 1][y + 1];
+    let diag1 = format!("{}A{}", corners[0], corners[3]);
+    let diag2 = format!("{}A{}", corners[1], corners[2]);
 
-    let mut m1 = String::new();
-    m1.push(tl);
-    m1.push('A');
-    m1.push(br);
-
-    let mut m2 = String::new();
-    m2.push(tr);
-    m2.push('A');
-    m2.push(bl);
-
-    if (m1 == "MAS" || m1 == "SAM") && (m2 == "MAS" || m2 == "SAM") {
-        return Some(Point(x as isize, y as isize));
-    }
-
-    None
+    (diag1 == "MAS" || diag1 == "SAM") && (diag2 == "MAS" || diag2 == "SAM")
 }
 
 fn solve_part_one(input: &str) -> usize {
-    let table = process_table(input);
+    let table = Table::new(input);
 
-    let mut total = 0;
-
-    for (idx, row) in table.cells.iter().enumerate() {
-        for (jdx, _) in row.iter().enumerate() {
-            total += scan_table(&table, idx, jdx).len();
-        }
-    }
-
-    total
+    table
+        .coordinate_map()
+        .fold(0, |acc, (x, y)| acc + scan_table(&table, x, y))
 }
 
-fn solve_part_two(input: &str) -> u32 {
-    let table = process_table(input);
+fn solve_part_two(input: &str) -> usize {
+    let table = Table::new(input);
 
-    let mut total = 0;
-
-    for (idx, row) in table.cells.iter().enumerate() {
-        for (jdx, _) in row.iter().enumerate() {
-            if scan_table_cross(&table, idx, jdx).is_some() {
-                total += 1;
-            }
-        }
-    }
-
-    total
+    table
+        .coordinate_map()
+        .filter(|&(x, y)| scan_table_cross(&table, x, y))
+        .count()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
