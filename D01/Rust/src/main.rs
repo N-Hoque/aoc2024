@@ -1,48 +1,35 @@
+use itertools::Itertools;
+
+fn parse(input: &str) -> (Vec<i32>, Vec<i32>) {
+    input
+        .lines()
+        .filter_map(|line| {
+            line.split_whitespace()
+                .filter_map(|x| x.parse::<i32>().ok())
+                .collect_tuple()
+        })
+        .unzip()
+}
+
 fn solve_part_one(input: &str) -> i32 {
-    let mut left = Vec::new();
-    let mut right = Vec::new();
+    let (mut left, mut right) = parse(input);
 
-    for line in input.lines() {
-        let values = line
-            .split_whitespace()
-            .filter_map(|x| x.parse::<i32>().ok())
-            .collect::<Vec<_>>();
-        left.push(values[0]);
-        right.push(values[1]);
-    }
-
-    left.sort();
-    right.sort();
+    left.sort_unstable();
+    right.sort_unstable();
 
     left.into_iter()
         .zip(right)
-        .map(|(a, b)| (a - b).abs())
-        .sum()
+        .fold(0, |acc, (a, b)| acc + (a - b).abs())
 }
 
-fn solve_part_two(input: &str) -> i32 {
-    let mut left = Vec::new();
-    let mut right = Vec::new();
+fn solve_part_two(input: &str) -> usize {
+    let (left, right) = parse(input);
 
-    for line in input.lines() {
-        let values = line
-            .split_whitespace()
-            .filter_map(|x| x.parse::<i32>().ok())
-            .collect::<Vec<_>>();
-        left.push(values[0]);
-        right.push(values[1]);
-    }
+    let right_counts = right.into_iter().counts();
 
-    let mut occurence_map = std::collections::HashMap::new();
-    for l in left {
-        let counts = right.iter().filter(|x| **x == l).count() as i32;
-        occurence_map
-            .entry(l)
-            .and_modify(|x| *x += counts)
-            .or_insert(counts);
-    }
-
-    occurence_map.into_iter().map(|(a, b)| a * b).sum()
+    left.into_iter().fold(0, |acc, l| {
+        acc + (l as usize) * right_counts.get(&l).unwrap_or(&0)
+    })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
