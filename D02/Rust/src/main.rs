@@ -9,23 +9,31 @@ fn process_records(input: &str) -> Vec<Vec<i32>> {
         .collect()
 }
 
+fn compare_pair_with_bounds(a: i32, b: i32) -> bool {
+    a <= b && (1..=3).contains(&(a - b).abs())
+}
+
 fn is_record_safe(record: &[i32]) -> bool {
-    let mut first = true;
-    let mut ascending = false;
-    for pair in record.windows(2) {
-        let (a, b) = (pair[0], pair[1]);
-        let d = (a - b).abs();
-        if !(1..=3).contains(&d) {
-            return false;
-        }
-        if first {
-            first = false;
-            ascending = a > b;
-        } else if a > b && !ascending || a < b && ascending {
-            return false;
-        }
-    }
-    true
+    record
+        .iter()
+        .is_sorted_by(|a, b| compare_pair_with_bounds(**a, **b))
+        || record
+            .iter()
+            .is_sorted_by(|a, b| compare_pair_with_bounds(**b, **a))
+}
+
+fn is_record_safe_skip(record: &[i32], skip_index: usize) -> bool {
+    let filtered: Vec<i32> = record
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &x)| if i == skip_index { None } else { Some(x) })
+        .collect();
+
+    is_record_safe(&filtered)
+}
+
+fn is_record_safe_anywhere(record: &[i32]) -> bool {
+    (0..record.len()).any(|idx| is_record_safe_skip(record, idx))
 }
 
 fn solve_part_one(input: &str) -> usize {
@@ -35,28 +43,11 @@ fn solve_part_one(input: &str) -> usize {
         .count()
 }
 
-fn solve_part_two(input: &str) -> i32 {
-    let records = process_records(input);
-
-    let mut safe_records = 0;
-
-    for record in records {
-        if is_record_safe(&record) {
-            safe_records += 1;
-        } else {
-            let num_elements = record.len();
-            for i in 0..num_elements {
-                let mut record = record.clone();
-                record.remove(i);
-                if is_record_safe(&record) {
-                    safe_records += 1;
-                    break;
-                }
-            }
-        }
-    }
-
-    safe_records
+fn solve_part_two(input: &str) -> usize {
+    process_records(input)
+        .iter()
+        .filter(|r| is_record_safe(r) || is_record_safe_anywhere(r))
+        .count()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
