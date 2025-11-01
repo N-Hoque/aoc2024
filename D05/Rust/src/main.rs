@@ -1,3 +1,7 @@
+use std::cmp::Ordering;
+
+use itertools::Itertools;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct Node(i32);
@@ -8,106 +12,80 @@ struct Edge(Node, Node);
 #[derive(Debug, Default)]
 struct Graph(Vec<Edge>);
 
-enum EdgeType {
-    In,
-    Out,
-}
-
 impl Graph {
-    pub fn new() -> Self {
-        Self::default()
+    fn ordering(&self, n1: Node, n2: Node) -> Ordering {
+        if self.0.iter().any(|Edge(from, to)| *from == n1 && *to == n2) {
+            Ordering::Less
+        } else if self.0.iter().any(|Edge(from, to)| *from == n2 && *to == n1) {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
     }
-
-    pub fn add_edge(&mut self, e: Edge) {
-        self.0.push(e);
-    }
-
-    pub fn find_edge_type(&self, n1: Node, n2: Node) -> Option<EdgeType> {
-        self.0.iter().find_map(|Edge(m1, m2)| {
-            if n1 == *m1 && n2 == *m2 {
-                Some(EdgeType::Out)
-            } else if n1 == *m2 && n2 == *m1 {
-                Some(EdgeType::In)
-            } else {
-                None
-            }
-        })
-    }
-}
-
-fn parse_pair(input: &str) -> Option<Edge> {
-    input
-        .split('|')
-        .map(str::parse::<i32>)
-        .collect::<Result<Vec<_>, _>>()
-        .map_or(None, |values| Some(Edge(Node(values[0]), Node(values[1]))))
-}
-
-fn parse_line(input: &str) -> Vec<Node> {
-    input
-        .split(',')
-        .filter_map(|x| x.parse::<i32>().map(Node).ok())
-        .collect::<Vec<_>>()
 }
 
 fn parse(input: &str) -> (Graph, Vec<Vec<Node>>) {
-    let mut g = Graph::new();
-    let mut t = Vec::new();
+    let mut edges = Vec::new();
+    let mut updates = Vec::new();
 
     for line in input.lines() {
-        if let Some(edge) = parse_pair(line) {
-            g.add_edge(edge);
+        if line.contains('|') {
+            if let Some((left, right)) = line.split_once('|') {
+                if let (Ok(a), Ok(b)) = (left.parse::<i32>(), right.parse::<i32>()) {
+                    edges.push(Edge(Node(a), Node(b)));
+                }
+            }
         } else if !line.is_empty() {
-            t.push(parse_line(line));
+            let update = line
+                .split(',')
+                .filter_map(|x| x.parse::<i32>().map(Node).ok())
+                .collect();
+            updates.push(update);
         }
     }
 
-    (g, t)
+    (Graph(edges), updates)
 }
 
-fn sort_update(update: &mut [Node], g: &Graph) {
-    update.sort_by(|n1, n2| match g.find_edge_type(*n1, *n2) {
-        Some(EdgeType::Out) => std::cmp::Ordering::Less,
-        None => std::cmp::Ordering::Equal,
-        Some(EdgeType::In) => std::cmp::Ordering::Greater,
-    });
+fn is_ordered(update: &[Node], graph: &Graph) -> bool {
+    update.is_sorted_by(|a, b| graph.ordering(*a, *b) != Ordering::Greater)
 }
 
-fn is_ordered(update: &[Node], g: &Graph) -> bool {
-    update
-        .windows(2)
-        .all(|xs| !matches!(g.find_edge_type(xs[0], xs[1]), Some(EdgeType::In)))
+fn solve_part_one(graph: &Graph, updates: &[Vec<Node>]) -> i32 {
+    updates.iter().fold(0, |acc, update| {
+        acc + if is_ordered(update, graph) {
+            update.get(update.len() / 2).unwrap().0
+        } else {
+            0
+        }
+    })
 }
 
-fn solve_part_one(graph: &Graph, table: &[Vec<Node>]) -> i32 {
-    table
-        .iter()
-        .filter(|update| is_ordered(update, graph))
-        .map(|update| update[update.len() / 2].0)
-        .sum()
-}
-
-fn solve_part_two(graph: &Graph, table: &mut [Vec<Node>]) -> i32 {
-    table
-        .iter_mut()
-        .filter(|update| !is_ordered(update, graph))
-        .map(|failed| {
-            sort_update(failed, graph);
-            failed[failed.len() / 2].0
-        })
-        .sum()
+fn solve_part_two(graph: &Graph, updates: &[Vec<Node>]) -> i32 {
+    updates.iter().fold(0, |acc, update| {
+        acc + if !is_ordered(update, graph) {
+            update
+                .iter()
+                .sorted_by(|&&a, &&b| graph.ordering(a, b))
+                .nth(update.len() / 2)
+                .unwrap()
+                .0
+        } else {
+            0
+        }
+    })
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = std::fs::read_to_string("../input.txt")?;
 
-    let (g, mut t) = parse(&data);
+    let (g, t) = parse(&data);
 
     let p1 = solve_part_one(&g, &t);
 
     println!("{p1}");
 
-    let p2 = solve_part_two(&g, &mut t);
+    let p2 = solve_part_two(&g, &t);
 
     println!("{p2}");
 
@@ -160,9 +138,9 @@ mod tests {
     fn test_solve_two() {
         let expected = 123;
 
-        let (g, mut t) = super::parse(SAMPLE);
+        let (g, t) = super::parse(SAMPLE);
 
-        let actual = super::solve_part_two(&g, &mut t);
+        let actual = super::solve_part_two(&g, &t);
 
         assert_eq!(expected, actual);
     }
