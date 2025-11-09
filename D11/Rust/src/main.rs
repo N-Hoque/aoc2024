@@ -1,4 +1,4 @@
-use d09::{solve_part_one, solve_part_two};
+use d11::{solve_part_one, solve_part_two};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = std::fs::read_to_string("../input.txt")?;
